@@ -4,15 +4,22 @@
 // Sources: http://www.linuxdevcenter.com/pub/a/linux/2007/08/02/an-introduction-to-linux-audio.html
 // 			http://manuals.opensound.com/developer/sample_programs.html
 
-#include <uistd.h>
-#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <fcntl.h>
-#include <soundcard.h>
+#include <linux/soundcard.h>
+#include <pthread.h>
 
-int fd_out;
-int fd_in;
+int fd_audio;
 int sample_rate = 48000;
+int buffer_size;
+
+int open_audio_device(char *name, int flag);
+void process_input(void);
+void * start_thread(void *buffer);
 
 int main(int argc, char **argv) 
 {
@@ -21,8 +28,9 @@ int main(int argc, char **argv)
 
 	// Give the open_audio_function the pathname and a flag
 	// O_WRONLY says that the file will be opened for both writing and reading
-	fd_out = open_audio_device(name_out, O_WRONLY);
+	fd_audio = open_audio_device(name_out, O_WRONLY);
 
+	// Infinite audio input processing
 	while (1)
 		process_input();
 
@@ -30,7 +38,7 @@ int main(int argc, char **argv)
 }
 
 // Open the audio device
-static int open_audio_device(char *name, int flag)
+int open_audio_device(char *name, int flag)
 {
 	int tmp, fd;
 
@@ -65,7 +73,7 @@ static int open_audio_device(char *name, int flag)
 		exit(-1);
 	}
 
-	if (tmp != -1) {
+	if (tmp != 1) {
 		fprintf(stderr, "The device doesn't support mono mode.\n");
 		exit(-1);
 	}
@@ -82,15 +90,43 @@ static int open_audio_device(char *name, int flag)
 	return fd;
 }
 
+// The start_thread function must have the signiture void * st(void *args)
+// Play back the audio
+void * start_thread(void *buffer)
+{
+	// Convert back to a short pointer
+	short *buf = (short *) buffer;
+
+	// Use the write() system call
+	// write the audio bytes
+	if (write(fd_audio, buf, buffer_size) != buffer_size) {
+		perror("Audio write()");
+		exit(-1);
+	}
+
+	pthread_exit(0);
+}
+
+// Process the audio input and start up a new thread to play it back
 void process_input(void)
 {
-	short buffer[1024];
-	int l, i, level;
+	// 64 KB Buffer
+	short buffer[65536];
+	int l;
 
-	// read a block of audio samples
-	if ((l = read(fd_in, buffer, sizeof(buffer))) == -1) {
+	// A new thread
+	pthread_t th;
+
+	buffer_size = sizeof(buffer);
+
+	// Use the read() system call
+	// read a block of audio bytes
+	if ((l = read(fd_audio, buffer, buffer_size)) == -1) {
 		perror("Audio read()");
 		exit(-1);
 	}
+
+	// Create a new thread and call the start_thread function
+	pthread_create(&th, NULL, start_thread, (void *) buffer);
 }
 
