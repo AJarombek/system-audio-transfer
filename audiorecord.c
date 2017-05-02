@@ -16,6 +16,7 @@
 int fd_audio;
 int sample_rate = 48000;
 int buffer_size;
+int buffer_length;
 
 int open_audio_device(char *name, int flag);
 void process_input(void);
@@ -26,9 +27,17 @@ int main(int argc, char **argv)
 	// The default device
 	char *name_out = "/dev/dsp";
 
+	if (argc > 1) {
+		// Convert from string to int
+		buffer_length = strtol(argv[1], NULL, 10);
+	} else {
+		// Default buffer size of 64 KB
+		buffer_length = 65536;
+	}
+
 	// Give the open_audio_function the pathname and a flag
-	// O_WRONLY says that the file will be opened for both writing and reading
-	fd_audio = open_audio_device(name_out, O_WRONLY);
+	// O_RDWR says that the file will be opened for both writing and reading
+	fd_audio = open_audio_device(name_out, O_RDWR);
 
 	// Infinite audio input processing
 	while (1)
@@ -79,8 +88,6 @@ int open_audio_device(char *name, int flag)
 	}
 
 	// Finally, set the sample rate
-	sample_rate = 48000;
-
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &sample_rate) == -1) {
 		perror("SNDCTL_DSP_SPEED");
 		exit(-1);
@@ -110,8 +117,8 @@ void * start_thread(void *buffer)
 // Process the audio input and start up a new thread to play it back
 void process_input(void)
 {
-	// 64 KB Buffer
-	short buffer[65536];
+	// Defaults to 64 KB Buffer
+	short buffer[buffer_length];
 	int l;
 
 	// A new thread
